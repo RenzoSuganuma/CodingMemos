@@ -1,0 +1,202 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.UI;
+//Use This Script For 2D Game In Player Character Controlling ver-0.0.0 Beta
+[RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent (typeof(PlayerInput))]
+public class heroController : MonoBehaviour
+{
+    [SerializeField] float moveSpeed = 1,jumpPower = 5;//移動速度とジャンプの力を初期化
+    [SerializeField] int healthPoint = 10;//プレイヤーの体力を初期化
+
+    //コンポーネントの宣言
+    new Rigidbody2D rigidbody2D;
+    Animator animator;
+    SpriteRenderer spriteRenderer;
+    //入力APIのためのUnity-PlayerInputのInputSystemを使用。
+    PlayerInput playerInput;
+
+    //プレイヤーの実際の物理的挙動ための変数宣言
+    float horizontalInput = 0f;
+    public bool fireInput = false;
+    bool permitJump = false, damaged = false, jump = false, crouch = false;//ジャンプ許可、ダメージをくらった、ジャンプをした、しゃがんだ　のブール代数
+    Vector2 jumpingVector2 = Vector2.zero;//Rigidbody2D.AddForce()の引数に渡すためのベクトル２
+
+    //UIのアタッチされているゲームオブジェクト
+    [SerializeField] GameObject ui_text_Health;
+    [SerializeField] GameObject ui_text_Stage;
+
+    //テキストコンポーネントの宣言
+    Text health_txt, stage_txt;
+
+    // Start is called before the first frame update
+    void Start()
+    {
+	  //PlayerInputコンポーネントの初期化
+        playerInput = GetComponent<PlayerInput>();
+        playerInput.defaultActionMap = "Player";
+
+	  //Rigidbody2Dコンポーネント初期化
+        rigidbody2D = GetComponent<Rigidbody2D>();
+        rigidbody2D.gravityScale = 15f;
+        rigidbody2D.freezeRotation = true;
+
+        //Animatorコンポーネントの初期化
+        animator = GetComponent<Animator>();
+	  //プレイヤーの画像のｙ軸対象に反転させるためのコンポーネントの取得
+        spriteRenderer = GetComponent<SpriteRenderer>();
+
+        UIUpdator();
+    }
+
+    private void UIUpdator()//Update UI Displaying
+    {
+        //Get UI Component
+        health_txt = ui_text_Health.GetComponent<Text>();
+        stage_txt = ui_text_Stage.GetComponent<Text>();
+        //set text
+        health_txt.text = "HP:"  +healthPoint;
+        stage_txt.text = "Stage:1";
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        //move
+        rigidbody2D.velocity = new Vector2(horizontalInput * moveSpeed, 0f);
+        //jump chara
+        LaunchCharacter();
+        //sprite flip
+        SpriteFlip(horizontalInput);
+        //animator controll
+        if (horizontalInput != 0)
+        {
+            animator.SetBool("hero_Run", true);
+        }
+        else
+        {
+            animator.SetBool("hero_Run", !true);
+        }
+        animator.SetBool("hero_Jump", jump);
+        animator.SetBool("hero_Attack", fireInput);
+        animator.SetBool("hero_Crouch", crouch);
+
+        //Update UI Value
+        UIUpdator();
+    }
+
+    private void LaunchCharacter()//Called When Player Will Jump
+    {
+        //jump
+        if (permitJump)
+        {
+            rigidbody2D.AddForce(jumpingVector2, ForceMode2D.Impulse);
+        }
+    }
+
+    private void SpriteFlip(float horizontalInputValue)//入力値（ｘ軸の値）に応じて画像のｙ軸対象にフリップ
+    {
+        if (horizontalInputValue < 0)
+        {
+            spriteRenderer.flipX = true;
+        }
+        else
+        {
+            spriteRenderer.flipX = !true;
+        }
+
+        if(horizontalInputValue == 0)
+            spriteRenderer.flipX = true;
+    }
+
+    //scoped from input system with invoking unity events
+
+    public void getMove(InputAction.CallbackContext callbackContext)
+    {
+        if(callbackContext.ReadValue<Vector2>() != null)
+        {
+            horizontalInput = callbackContext.ReadValue<Vector2>().x;
+        }
+    }
+    
+    public void getFire(InputAction.CallbackContext callbackContext)
+    {
+        fireInput = callbackContext.ReadValueAsButton();
+    }
+    
+    public void getJump(InputAction.CallbackContext callbackContext)
+    {
+        if (callbackContext.ReadValueAsButton())
+        {
+            jumpingVector2 = new Vector2(0, jumpPower);
+            jump = true;//use boolean for animator controll
+        }
+        else
+        {
+            jumpingVector2 = Vector2.zero;
+            jump = !true;//use boolean for animator controll
+        }
+    }
+    
+    public void getCrouch(InputAction.CallbackContext callbackContext)
+    {
+        crouch = callbackContext.ReadValueAsButton();
+    }
+
+    private void OnCollisionEnter2D(Collision2D collision)
+    {
+        if (collision.collider.CompareTag("Ground"))
+        {
+            permitJump = true;
+        }
+
+        if (collision.collider.CompareTag("Bullet"))
+        {
+            whenDamaged(collision);
+            //print("player damaged from bullet");
+        }
+    }
+
+    //衝突判定　Ｓｔａｙ２Ｄ
+    private void OnCollisionStay2D(Collision2D collision)
+    {
+        if (collision.collider.CompareTag("Enemy") || collision.collider.CompareTag("Skeleton") || collision.collider.CompareTag("Angle") || collision.collider.CompareTag("Wizard"))
+        {
+            whenDamaged(collision);
+        }
+    }
+
+    private void whenDamaged(Collision2D collision)//Callde When Player Will Damaged
+    {
+        healthPoint--;
+        animator.SetTrigger("hero_Hurt");//animator controll
+        //nockback
+        if (this.gameObject.transform.position.x <= collision.gameObject.transform.position.x)
+        {
+            print("Nock Backing Now!");
+            if (fireInput != true)
+            {
+                rigidbody2D.AddForce(new Vector2(-50, 20), ForceMode2D.Impulse);
+            }
+        }
+        else
+        {
+            print("Nock Backing Now!");
+            if (fireInput != true)
+            {
+                rigidbody2D.AddForce(new Vector2(50, 20), ForceMode2D.Impulse);
+            }
+        }
+    }
+
+    //衝突判定　Ｅｘｉｔ２Ｄ
+    private void OnCollisionExit2D(Collision2D collision)//Use To Controll Player Jumping
+    {
+        if (collision.collider.CompareTag("Ground"))
+        {
+            permitJump = false;
+        }
+    }
+}
